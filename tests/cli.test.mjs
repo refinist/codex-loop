@@ -30,13 +30,13 @@ function childResult(child) {
     child.on("close", (code) => resolve({ code, out, err }));
   });
 }
-async function waitFor(predicate) {
+async function waitFor(predicate, diagnostics = () => "") {
   const start = Date.now();
   while (Date.now() - start < 15000) {
     if (predicate()) return;
     await sleep(30);
   }
-  throw new Error("Timed out waiting for fixture");
+  throw new Error("Timed out waiting for fixture: " + diagnostics());
 }
 function fixture(t) {
   const root = fs.realpathSync(
@@ -68,6 +68,10 @@ function fixture(t) {
     );
     const result = childResult(child);
     children.push({ child, result });
+    result.then((r) => {
+      if (r.code !== 0)
+        console.error("Worker exit diagnostics:", JSON.stringify(r));
+    });
     return result;
   };
   t.after(async () => {
@@ -162,7 +166,10 @@ for (let attempt = 1; attempt <= 10; attempt++) {
     f.touch("repeat");
     const j = f.create("check", "cli"),
       result = f.start();
-    await waitFor(() => f.snapshot().tasks[j.id].runs === 1);
+    await waitFor(
+      () => f.snapshot().tasks[j.id].runs === 1,
+      () => JSON.stringify(f.snapshot()),
+    );
     f.cli("wake", j.id);
     assert.equal((await result).code, 0);
     const calls = f.calls();
@@ -231,7 +238,10 @@ test("missing decision single fallback", async (t) => {
   f.touch("missing");
   const j = f.create("check", "cli"),
     result = f.start();
-  await waitFor(() => f.snapshot().tasks[j.id].runs === 1);
+  await waitFor(
+    () => f.snapshot().tasks[j.id].runs === 1,
+    () => JSON.stringify(f.snapshot()),
+  );
   const first = f.snapshot().tasks[j.id];
   assert.equal(first.due_at - first.finished_at, 1200);
   f.cli("wake", j.id);
