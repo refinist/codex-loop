@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Loop"
+  short_description: "Claude-style dynamic and fixed task loops for Codex"
+  default_prompt: "Use $codex-loop to check this task repeatedly, choose each next delay from the results, and stop when it is complete."

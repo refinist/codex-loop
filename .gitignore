@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+work/
+.coverage
+htmlcov/
+.DS_Store
