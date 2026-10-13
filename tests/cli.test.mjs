@@ -151,20 +151,23 @@ test("worker completes with permission boundaries", async (t) => {
   assert.ok(!call.args.some((a) => a.includes("dangerously")));
   assert.match(call.prompt, /ONE iteration/);
 });
-test("event wake resumes only owned worker", async (t) => {
-  const f = fixture(t);
-  f.touch("repeat");
-  const j = f.create("check", "cli"),
-    result = f.start();
-  await waitFor(() => f.snapshot().tasks[j.id].runs === 1);
-  f.cli("wake", j.id);
-  assert.equal((await result).code, 0);
-  const calls = f.calls();
-  assert.equal(calls.length, 2);
-  assert.ok(calls[1].args.includes("resume"));
-  assert.ok(calls[1].args.includes("owned-worker"));
-  assert.ok(!calls[1].args.includes("--last"));
-});
+for (let attempt = 1; attempt <= 10; attempt++) {
+  test(`event wake resumes only owned worker (${attempt})`, async (t) => {
+    const f = fixture(t);
+    f.touch("repeat");
+    const j = f.create("check", "cli"),
+      result = f.start();
+    await waitFor(() => f.snapshot().tasks[j.id].runs === 1);
+    f.cli("wake", j.id);
+    assert.equal((await result).code, 0);
+    const calls = f.calls();
+    assert.equal(calls.length, 2);
+    assert.ok(calls[1].args.includes("resume"));
+    assert.ok(calls[1].args.includes("owned-worker"));
+    assert.ok(!calls[1].args.includes("--last"));
+  });
+}
+
 test("cancel terminates owned worker", async (t) => {
   const f = fixture(t);
   f.touch("slow");
