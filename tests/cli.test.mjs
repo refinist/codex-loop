@@ -52,7 +52,12 @@ function fixture(t) {
       [CLI, "--state", state, ...args],
       { encoding: "utf8", timeout: 20000 },
     );
-    assert.equal(result.status, 0, result.stderr);
+    assert.equal(
+      result.status,
+      0,
+      result.stderr +
+        (fs.existsSync(state) ? fs.readFileSync(state, "utf8") : ""),
+    );
     return JSON.parse(result.stdout);
   };
   const start = (...args) => {
