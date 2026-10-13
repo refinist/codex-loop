@@ -17,7 +17,7 @@ If neither surface can actually wait and continue, explain the missing capabilit
 
 ## Start and parse
 
-Resolve `scripts/codex_loop.py` relative to this skill. Python 3.10+ on macOS/Linux is required. Commands below abbreviate this absolute path as `<script>`.
+Resolve `scripts/codex_loop.py` relative to this skill. Python 3.10+ on macOS, Linux, or Windows is required. On Windows, use `py -3` (or a verified `python` command) instead of `python3`, and install `tzdata` with that same interpreter if missing. Write/read JSON and request files as UTF-8; use native argument arrays or file tools instead of POSIX quoting in PowerShell. Commands below abbreviate this absolute path as `<script>`.
 
 1. Preserve the user's full loop input. Save it to a UTF-8 request file using the file tools, avoiding shell interpolation of prompts. Accept `$codex-loop`, `/codex-loop`, or `/loop` as textual prefixes; Codex's native slash-command parser may not dispatch `/loop`, so recommend `$codex-loop` as the invocation.
 2. Choose a **new** session state path inside the project's ignored `work/` directory (or an authorized private scratch directory). Keep the exact path in conversation context; never share it with another chat. Do not publish state, prompts, or tool results.

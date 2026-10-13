@@ -47,6 +47,9 @@ def parser():
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     args = parser().parse_args(argv)
     if args.command == "plan":
         result = parse_request(args.request)
@@ -66,7 +69,7 @@ def main(argv=None):
                     raise ValueError("Session is closed; restore it or use a new state file")
                 if state.get("driver") not in (None, args.driver):
                     raise ValueError("Cannot mix session and CLI drivers")
-                request = args.request_file.read_text() if args.request_file else args.request
+                request = args.request_file.read_text(encoding="utf-8") if args.request_file else args.request
                 result = add_job(state, request, now(), args.cron, args.once)
                 state["driver"] = args.driver
             elif args.command == "list":
@@ -85,7 +88,7 @@ def main(argv=None):
                     result = {"task": None, "next_at": min(waiting) if waiting and not state.get("closed") and not disabled() else None,
                               "disabled": disabled()}
             elif args.command == "complete":
-                result = finish(state, args.id, args.lease, json.loads(args.decision_file.read_text()), now())
+                result = finish(state, args.id, args.lease, json.loads(args.decision_file.read_text(encoding="utf-8")), now())
             elif args.command == "cancel":
                 ids = list(state["tasks"]) if args.id == "all" else [args.id]
                 result = [cancel(state, i) for i in ids]

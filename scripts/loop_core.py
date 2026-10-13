@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import contextlib
 import datetime as dt
-import fcntl
 import hashlib
 import json
 import math
@@ -13,7 +12,8 @@ import re
 import tempfile
 import time
 import uuid
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from loop_platform import file_lock, reject_links
 
 TTL = 7 * 86400
 MAX_TASKS = 50
@@ -174,7 +174,10 @@ def resolve_prompt(job: dict, project: str, codex_home: str | None = None) -> tu
 
 
 def new_session(project: str, timezone: str) -> dict:
-    ZoneInfo(timezone)
+    try:
+        ZoneInfo(timezone)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError("Unknown IANA timezone or missing data; install it with: python -m pip install tzdata") from error
     return {"version": 1, "id": uuid.uuid4().hex, "project": str(Path(project).resolve()),
             "timezone": timezone, "created_at": now(), "tasks": {}, "worker_thread": None}
 
@@ -293,16 +296,12 @@ class Store:
     @contextlib.contextmanager
     def transaction(self, project: str | None = None, timezone: str = "UTC"):
         # Refuse symlink state paths so task data cannot overwrite an unrelated file.
-        for path in (self.path, *self.path.parents):
-            if path.is_symlink():
-                raise ValueError("State path must not contain symlinks")
+        reject_links(self.path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         lock = self.path.with_suffix(self.path.suffix + ".lock")
-        descriptor = os.open(lock, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(descriptor, "a+") as stream:
-            fcntl.flock(stream, fcntl.LOCK_EX)
+        with file_lock(lock):
             if self.path.exists():
-                state = json.loads(self.path.read_text())
+                state = json.loads(self.path.read_text(encoding="utf-8"))
                 if state.get("version") != 1:
                     raise ValueError("Unsupported state version")
                 if project and state["project"] != str(Path(project).resolve()):
@@ -314,7 +313,7 @@ class Store:
             yield state
             descriptor, name = tempfile.mkstemp(prefix=".loop-", dir=self.path.parent)
             try:
-                with os.fdopen(descriptor, "w") as out:
+                with os.fdopen(descriptor, "w", encoding="utf-8") as out:
                     json.dump(state, out, ensure_ascii=False, indent=2, allow_nan=False)
                     out.write("\n")
                     out.flush()

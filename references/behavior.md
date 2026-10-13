@@ -13,7 +13,7 @@ The Python helper implements deterministic state transitions. Model judgment onl
 - Dynamic continuation is 60–3600 seconds **after completion**; it has no jitter. Event wakeups can advance the deadline. Fixed scheduling is anchored at the preceding claim and is independent of task duration.
 - Recurring jobs have seven-day lifetimes. In a live driver, the first due run claimed after expiry is final. Reopening a closed driver removes already-expired jobs instead of firing them.
 - A successful dynamic tick lacking a scheduling decision gets one 1,200-second fallback. An explicit continuation resets that fallback allowance. The standalone driver only applies this when the process completed successfully but supplied no result file; malformed decisions block for inspection.
-- Completion must match an active lease. Cancellation invalidates it, so late results cannot restart canceled jobs. State writes use file locking, atomic replacement, and mode 0600.
+- Completion must match an active lease. Cancellation invalidates it, so late results cannot restart canceled jobs. State writes use file locking, atomic replacement, and mode 0600 on POSIX; Windows uses inherited directory ACLs. Windows locking uses `msvcrt` byte-range locks.
 - There can be at most 50 active jobs. Stopped and blocked records are retained for inspection. They are not queued work.
 
 CLI state is pinned to its original project path; creation from another path fails. The runner uses that saved project, even when invoked from a different directory. Moving a state file does not retarget the project.

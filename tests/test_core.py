@@ -246,7 +246,7 @@ class StorageAndDefaults(unittest.TestCase):
             path.write_text('changed')
             self.assertEqual(resolve_prompt(job,str(project),str(home))[0],'changed')
             self.assertEqual(resolve_prompt({'prompt':'explicit'},str(project),str(home))[0],'explicit')
-            path.write_text('中'*9000)
+            path.write_text('中'*9000,encoding='utf-8')
             text, _ = resolve_prompt(job,str(project),str(home))
             self.assertIn('truncated',text)
             self.assertNotIn('\ufffd',text)
@@ -266,7 +266,8 @@ class StorageAndDefaults(unittest.TestCase):
                     state['tasks'].clear()
                     raise RuntimeError('abort')
             self.assertEqual(store.path.read_text(),before)
-            self.assertEqual(store.path.stat().st_mode & 0o777,0o600)
+            if os.name != 'nt':
+                self.assertEqual(store.path.stat().st_mode & 0o777,0o600)
             with self.assertRaises(ValueError):
                 with store.transaction('/'):
                     pass
@@ -276,7 +277,12 @@ class StorageAndDefaults(unittest.TestCase):
             target = Path(root)/'target'
             target.write_text('untouched')
             link = Path(root)/'state'
-            link.symlink_to(target)
+            try:
+                link.symlink_to(target)
+            except OSError as error:
+                if getattr(error, "winerror", None) == 1314:
+                    self.skipTest("Windows symlink creation privilege not available")
+                raise
             with self.assertRaises(ValueError):
                 with Store(link).transaction(root):
                     pass

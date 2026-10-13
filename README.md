@@ -8,7 +8,15 @@
 npx skills add refinist/codex-loop --skill codex-loop -g
 ```
 
-需要 Python 3.10+，支持 macOS 和 Linux。安装后，在 Codex 中通过 `$codex-loop` 调用。
+需要 Python 3.10+，支持 **macOS、Linux 和 Windows**。安装后，在 Codex 中通过 `$codex-loop` 调用。
+
+Windows 还需要安装 IANA 时区数据（PowerShell）：
+
+```powershell
+py -3 -m pip install tzdata
+```
+
+Windows 下运行附带脚本时，可将文档中的 `python3` 换成 `py -3`。
 
 ## yetone 的 loop 工作流
 

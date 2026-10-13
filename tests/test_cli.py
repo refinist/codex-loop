@@ -36,7 +36,7 @@ class CLITests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name).resolve()
         self.state = self.root/'state.json'
-        self.fake = self.root/'fake-codex'
+        self.fake = self.root/'fake-codex.py'
         self.fake.write_text(FAKE)
         self.fake.chmod(0o755)
         self.processes = []
@@ -44,7 +44,11 @@ class CLITests(unittest.TestCase):
     def tearDown(self):
         for process in self.processes:
             if process.poll() is None:
-                process.terminate()
+                self.cli('cancel','all',check=False)
+                try:
+                    process.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    process.terminate()
             try:
                 process.communicate(timeout=5)
             except subprocess.TimeoutExpired:
@@ -53,7 +57,7 @@ class CLITests(unittest.TestCase):
         self.temp.cleanup()
 
     def cli(self,*args,check=True):
-        out = subprocess.run([sys.executable,str(CLI),'--state',str(self.state),*args],capture_output=True,text=True)
+        out = subprocess.run([sys.executable,str(CLI),'--state',str(self.state),*args],capture_output=True,text=True,encoding="utf-8")
         if check and out.returncode:
             self.fail(out.stderr)
         return out
@@ -62,12 +66,12 @@ class CLITests(unittest.TestCase):
         return json.loads(self.cli('create','--project',str(self.root),'--driver',driver,request).stdout)
 
     def run_async(self,*args):
-        process = subprocess.Popen([sys.executable,str(CLI),'--state',str(self.state),'run','--codex',str(self.fake),*args],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        process = subprocess.Popen([sys.executable,str(CLI),'--state',str(self.state),'run','--codex',str(self.fake),*args],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding="utf-8")
         self.processes.append(process)
         return process
 
     def wait_for(self,predicate):
-        end = time.monotonic()+8
+        end = time.monotonic()+20
         while time.monotonic()<end:
             if predicate(): return
             time.sleep(.05)
@@ -87,7 +91,7 @@ class CLITests(unittest.TestCase):
     def test_concurrent_claim_is_exclusive(self):
         self.create()
         commands = [[sys.executable,str(CLI),'--state',str(self.state),'claim'] for _ in range(6)]
-        children = [subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True) for cmd in commands]
+        children = [subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding="utf-8") for cmd in commands]
         outputs = [json.loads(p.communicate(timeout=5)[0]) for p in children]
         self.assertEqual(sum(item['task'] is not None for item in outputs),1)
 
@@ -104,7 +108,7 @@ class CLITests(unittest.TestCase):
     def test_cli_complete_and_permission_flags(self):
         job = self.create(driver='cli')
         process = self.run_async()
-        out, err = process.communicate(timeout=8)
+        out, err = process.communicate(timeout=20)
         self.assertEqual(process.returncode,0,err)
         self.assertEqual(self.snapshot()['tasks'][job['id']]['status'],'stopped')
         call = json.loads((self.root/'calls.jsonl').read_text())
@@ -118,7 +122,7 @@ class CLITests(unittest.TestCase):
         process = self.run_async()
         self.wait_for(lambda:self.snapshot()['tasks'][job['id']]['runs']==1)
         self.cli('wake',job['id'])
-        out, err = process.communicate(timeout=8)
+        out, err = process.communicate(timeout=20)
         self.assertEqual(process.returncode,0,err)
         calls = [json.loads(line) for line in (self.root/'calls.jsonl').read_text().splitlines()]
         self.assertEqual(len(calls),2)
@@ -133,15 +137,28 @@ class CLITests(unittest.TestCase):
         self.wait_for(lambda:(self.root/'worker.pid').exists())
         pid = int((self.root/'worker.pid').read_text())
         self.cli('cancel',job['id'])
-        process.communicate(timeout=8)
+        process.communicate(timeout=20)
         self.assertEqual(self.snapshot()['tasks'][job['id']]['status'],'stopped')
-        with self.assertRaises(ProcessLookupError): os.kill(pid,0)
+        if os.name == 'nt':
+            import ctypes
+            from ctypes import wintypes
+            kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+            kernel.OpenProcess.argtypes = [wintypes.DWORD,wintypes.BOOL,wintypes.DWORD]
+            kernel.OpenProcess.restype = wintypes.HANDLE
+            kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+            kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE,wintypes.DWORD]
+            handle = kernel.OpenProcess(0x100000,False,pid)
+            if handle:
+                try: self.assertEqual(kernel.WaitForSingleObject(handle,0),0)
+                finally: kernel.CloseHandle(handle)
+        else:
+            with self.assertRaises(ProcessLookupError): os.kill(pid,0)
 
     def test_timeout_blocks(self):
         (self.root/'slow').touch()
         job = self.create(driver='cli')
         process = self.run_async('--timeout','0.2')
-        process.communicate(timeout=8)
+        process.communicate(timeout=20)
         state = self.snapshot()['tasks'][job['id']]
         self.assertEqual(state['status'],'blocked')
         self.assertIn('timed out',state['reason'])
@@ -150,7 +167,7 @@ class CLITests(unittest.TestCase):
         (self.root/'fail').touch()
         job = self.create(driver='cli')
         process = self.run_async()
-        process.communicate(timeout=8)
+        process.communicate(timeout=20)
         self.assertEqual(self.snapshot()['tasks'][job['id']]['status'],'blocked')
         self.assertEqual(len((self.root/'calls.jsonl').read_text().splitlines()),1)
 
@@ -160,11 +177,11 @@ class CLITests(unittest.TestCase):
         first = self.run_async()
         self.wait_for(lambda:(self.root/'worker.pid').exists())
         second = self.run_async()
-        out, err = second.communicate(timeout=8)
+        out, err = second.communicate(timeout=20)
         self.assertNotEqual(second.returncode,0)
         self.assertIn('already has a running driver',err)
-        first.terminate()
-        first.communicate(timeout=8)
+        self.cli('cancel','all')
+        first.communicate(timeout=20)
 
     def test_close_stops_driver(self):
         (self.root/'slow').touch()
@@ -172,7 +189,7 @@ class CLITests(unittest.TestCase):
         process = self.run_async()
         self.wait_for(lambda:(self.root/'worker.pid').exists())
         self.cli('close')
-        process.communicate(timeout=8)
+        process.communicate(timeout=20)
         self.assertEqual(self.snapshot()['tasks'][job['id']]['status'],'blocked')
         self.assertTrue(self.snapshot()['closed'])
 
@@ -184,7 +201,7 @@ class CLITests(unittest.TestCase):
         first = self.snapshot()['tasks'][job['id']]
         self.assertAlmostEqual(first['due_at']-first['finished_at'],1200)
         self.cli('wake',job['id'])
-        process.communicate(timeout=8)
+        process.communicate(timeout=20)
         self.assertEqual(self.snapshot()['tasks'][job['id']]['runs'],2)
         self.assertEqual(self.snapshot()['tasks'][job['id']]['status'],'stopped')
 
@@ -198,8 +215,15 @@ class CLITests(unittest.TestCase):
         self.assertEqual(tasks[fixed['id']]['status'],'waiting')
         self.assertGreater(tasks[fixed['id']]['due_at'],time.time())
         self.cli('cancel','all')
-        process.communicate(timeout=8)
+        process.communicate(timeout=20)
         self.assertFalse((self.root/'calls.jsonl').exists())
+
+    def test_unicode_prompt_and_spaced_path(self):
+        request = self.root/'任务 with spaces.txt'
+        request.write_text('检查部署状态：完成后停止。',encoding='utf-8')
+        output = self.cli('create','--project',str(self.root),'--request-file',str(request))
+        self.assertEqual(json.loads(output.stdout)['prompt'],'检查部署状态：完成后停止。')
+        self.assertEqual(json.loads(self.cli('claim').stdout)['prompt'],'检查部署状态：完成后停止。')
 
     def test_mode_separation(self):
         self.create()
@@ -209,7 +233,7 @@ class CLITests(unittest.TestCase):
 
     def test_disable_registration(self):
         env = dict(os.environ,CODEX_LOOP_DISABLE='1')
-        result = subprocess.run([sys.executable,str(CLI),'--state',str(self.state),'create','check'],env=env,capture_output=True,text=True)
+        result = subprocess.run([sys.executable,str(CLI),'--state',str(self.state),'create','check'],env=env,capture_output=True,text=True,encoding="utf-8")
         self.assertNotEqual(result.returncode,0)
         self.assertFalse(self.state.exists())
 

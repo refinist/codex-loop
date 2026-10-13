@@ -1,7 +1,6 @@
 """Foreground Codex CLI adapter. Owns its worker; never resumes a live UI thread."""
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 from pathlib import Path
@@ -10,6 +9,7 @@ import subprocess
 import tempfile
 import time
 
+from loop_platform import executable_prefix, file_lock, process_options, stop_signals, terminate
 from loop_core import ACTIVE, Store, cancel, claim, disabled, finish, now, reopen, resolve_prompt
 
 SCHEMA = {
@@ -53,26 +53,13 @@ def build_prompt(job, project, codex_home=None):
 
 
 def command(executable, thread, sandbox, schema, output):
-    args = [executable, "exec", "-c", 'approval_policy="never"',
+    args = executable_prefix(executable) + ["exec", "-c", 'approval_policy="never"',
             "-c", f'sandbox_mode="{sandbox}"']
     if thread:
         args += ["resume", thread]
     args += ["--skip-git-repo-check", "--json", "--output-schema", str(schema),
              "--output-last-message", str(output), "-"]
     return args
-
-
-def terminate(process):
-    if process.poll() is not None:
-        return
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-        process.wait(timeout=3)
-    except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
-        process.wait(timeout=3)
-    except ProcessLookupError:
-        pass
 
 
 def execute(store, job, executable, sandbox, timeout):
@@ -84,11 +71,11 @@ def execute(store, job, executable, sandbox, timeout):
     with tempfile.TemporaryDirectory(prefix="codex-loop-") as directory:
         directory = Path(directory)
         schema, output, events = directory/"schema.json", directory/"result.json", directory/"events.jsonl"
-        schema.write_text(json.dumps(SCHEMA))
-        with events.open("w+") as event_stream, (directory/"stderr.log").open("w+") as error_stream:
+        schema.write_text(json.dumps(SCHEMA), encoding="utf-8")
+        with events.open("w+", encoding="utf-8") as event_stream, (directory/"stderr.log").open("w+", encoding="utf-8") as error_stream:
             process = subprocess.Popen(command(executable, thread, sandbox, schema, output),
                                        cwd=project, stdin=subprocess.PIPE, stdout=event_stream,
-                                       stderr=error_stream, text=True, start_new_session=True)
+                                       stderr=error_stream, text=True, encoding="utf-8", **process_options())
             try:
                 process.stdin.write(build_prompt(job, project))
                 process.stdin.close()
@@ -127,7 +114,7 @@ def execute(store, job, executable, sandbox, timeout):
                     return {"action": "fallback", "delay_seconds": None, "reason": "No scheduling decision returned", "noop": True}
                 if output.stat().st_size > 1024*1024:
                     raise RuntimeError("Codex decision exceeded 1 MiB")
-                return json.loads(output.read_text())
+                return json.loads(output.read_text(encoding="utf-8"))
             finally:
                 terminate(process)
 
@@ -143,12 +130,12 @@ def run(store: Store, executable="codex", sandbox="read-only", timeout=1800, res
     with store.transaction() as state:
         if state.get("driver") not in (None, "cli"):
             raise ValueError("State is owned by the in-session adapter")
-    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(descriptor, "w") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as error:
-            raise ValueError("This session already has a running driver") from error
+    try:
+        lock_context = file_lock(lock_path, blocking=False)
+        lock_context.__enter__()
+    except BlockingIOError as error:
+        raise ValueError("This session already has a running driver") from error
+    try:
         with store.transaction() as state:
             if state.get("has_run") and not resume:
                 raise ValueError("Use run --resume for a previously started session")
@@ -161,7 +148,7 @@ def run(store: Store, executable="codex", sandbox="read-only", timeout=1800, res
         old_handlers = {}
         def interrupt(signum, frame):
             raise KeyboardInterrupt
-        for sig in (signal.SIGTERM, signal.SIGHUP):
+        for sig in stop_signals():
             old_handlers[sig] = signal.signal(sig, interrupt)
         try:
             while not disabled():
@@ -207,3 +194,6 @@ def run(store: Store, executable="codex", sandbox="read-only", timeout=1800, res
 
         with store.transaction() as state:
             return 2 if any(j["status"] == "blocked" for j in state["tasks"].values()) else 0
+
+    finally:
+        lock_context.__exit__(None, None, None)
