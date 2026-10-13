@@ -81,7 +81,12 @@ function fixture(t) {
         await result;
       }
     }
-    fs.rmSync(root, { recursive: true, force: true });
+    await fs.promises.rm(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 3,
+      retryDelay: 100,
+    });
   });
   return {
     root,

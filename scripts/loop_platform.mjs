@@ -48,10 +48,15 @@ export async function fileLock(file, blocking = true) {
       { mode: 0o600, flag: "wx" },
     );
   } catch (error) {
-    fs.rmSync(file, { recursive: true, force: true });
+    fs.rmdirSync(file);
     throw error;
   }
-  return () => fs.rmSync(file, { recursive: true });
+  // Delete the known owner file and empty directory explicitly. Early Node 24
+  // rmSync mishandles Windows non-ASCII paths (nodejs/node#61108).
+  return () => {
+    fs.unlinkSync(path.join(file, "owner.json"));
+    fs.rmdirSync(file);
+  };
 }
 export function executablePrefix(executable, platform = process.platform) {
   let resolved = executable;

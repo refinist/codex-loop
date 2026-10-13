@@ -426,3 +426,17 @@ test("Windows PATH prefers npm cmd over extensionless shell shim", () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("lock is actually removed from a Unicode directory", async () => {
+  const root = temporary(),
+    file = path.join(root, "任务 lock");
+  try {
+    const unlock = await fileLock(file);
+    unlock();
+    assert.equal(fs.existsSync(file), false);
+    const unlockAgain = await fileLock(file, false);
+    unlockAgain();
+  } finally {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  }
+});

@@ -162,7 +162,12 @@ export async function execute(
     } finally {
       if (eventFd !== undefined) fs.closeSync(eventFd);
       if (errorFd !== undefined) fs.closeSync(errorFd);
-      fs.rmSync(dir, { recursive: true, force: true });
+      await fs.promises.rm(dir, {
+        recursive: true,
+        force: true,
+        maxRetries: 3,
+        retryDelay: 100,
+      });
     }
   }
 }
