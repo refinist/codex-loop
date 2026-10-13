@@ -8,15 +8,15 @@
 npx skills add refinist/codex-loop --skill codex-loop -g
 ```
 
-需要 Python 3.10+，支持 **macOS、Linux 和 Windows**。安装后，在 Codex 中通过 `$codex-loop` 调用。
+需要 **Node.js ≥24.0.0**，推荐最新的 **24.x LTS**，支持 **macOS、Linux 和 Windows**。安装后，在 Codex 中通过 `$codex-loop` 调用。
 
-Windows 还需要安装 IANA 时区数据（PowerShell）：
+脚本直接使用当前 PATH 中的 `node`，也会跟随 fnm / nvm 当前启用的版本。运行时只使用 Node.js 内置模块，无需在 skill 目录执行 `npm install`，Windows 也不需要额外的时区包。可以先检查版本：
 
-```powershell
-py -3 -m pip install tzdata
+```bash
+node --version
 ```
 
-Windows 下运行附带脚本时，可将文档中的 `python3` 换成 `py -3`。
+低于 24 时，启动会提示升级。切换版本后，如果 Codex 仍读取旧环境，请重启 Codex。最低版本是本项目的支持基线，不表示调度算法只能在 24 上实现；版本状态见 [Node.js 官方发布说明](https://nodejs.org/en/about/previous-releases)。
 
 ## yetone 的 loop 工作流
 
@@ -145,7 +145,7 @@ $codex-loop
 
 本项目提供的实用功能：
 
-- **跨平台运行**：macOS、Linux、Windows；CI 覆盖三种系统的 Python 3.10 和 3.14。Windows 另需 `tzdata`。
+- **跨平台运行**：macOS、Linux、Windows；CI 覆盖三种系统的 Node.js 24.0.0、最新 24.x 和 26.x；无需额外运行依赖。
 - **状态可检查**：JSON 状态记录任务 ID、执行次数、下次时间和决策理由，方便排查停止或延迟的原因。
 - **CLI 可设置运行边界**：`--max-runs` 限制执行轮数，`--timeout` 限制单轮时间；执行错误或无效决策会阻塞任务，避免盲目重试。
 - **调度逻辑可验证**：附带间隔解析、默认文件重载、取消、恢复和跨进程互斥等测试。

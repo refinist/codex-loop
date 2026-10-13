@@ -7,7 +7,7 @@ Reference date: 2026-10-13. This is an independent implementation for Codex, not
 - [Claude Code scheduled tasks](https://code.claude.com/docs/en/scheduled-tasks): public behavior and lifecycle reference.
 - Locally installed Claude Code **2.1.269**: inspected the bundled loop entrypoint, parsing rules, interval conversion guidance, immediate-run flow, default-file resolution, and dynamic continue/stop decision contract. The inspection informed behavior, not copied implementation. Local feature flags/version can differ from the live docs.
 - [Codex noninteractive mode](https://learn.chatgpt.com/docs/non-interactive-mode): JSONL events and output-schema contract.
-- Codex CLI **0.157.0**: inspected `exec`, `exec resume`, and their help output to verify flags. Real read-only smoke tests passed: a single iteration returned stop; a two-iteration run waited 60 seconds, resumed the same owned thread, recognized prior context, and stopped. These smoke tasks requested no task-tool calls. Long-duration operation remains unverified.
+- Codex CLI **0.157.0**: inspected `exec`, `exec resume`, and their help output to verify flags. A real read-only Node.js driver smoke test passed: a single iteration returned stop without task-tool calls. Integration tests verify that an event-woken second iteration resumes the same owned worker. Long-duration operation remains unverified.
 
 ## Implemented scheduler behavior
 
@@ -51,6 +51,6 @@ Reference date: 2026-10-13. This is an independent implementation for Codex, not
 5. **Tool/context parity:** current-chat mode retains available chat tools; standalone CLI mode uses CLI configuration and an owned worker. It does not inherit desktop-only connectors or originating chat history.
 6. **Fallback:** the core implements one fallback when told that a successful tick omitted a decision. It cannot rescue an agent that ends the current-chat turn without invoking any scheduling helper.
 7. **Persistence/UI:** terminal records are retained for inspection, rather than disappearing from a native scheduled-task list. There is no native schedule panel or no-op message collapse.
-8. **Implementation choices:** `.codex/loop.md` replaces `.claude/loop.md`; interval ties round up; jitter uses our stable hash; IANA timezone is explicit; macOS, Linux, and Windows are supported; Windows needs the `tzdata` package. Windows uses byte-range locks and process-tree termination instead of POSIX primitives. Day steps have month-boundary gaps. No feature-flag or cloud-upsell behavior is reproduced.
+8. **Implementation choices:** `.codex/loop.md` replaces `.claude/loop.md`; interval ties round up; jitter uses our stable hash; IANA timezone is explicit; macOS, Linux, and Windows are supported; Node.js 24+ supplies IANA timezone data through Intl. Locks use atomic directory creation on all platforms; Windows worker cancellation uses process-tree termination. Day steps have month-boundary gaps. No feature-flag or cloud-upsell behavior is reproduced.
 
 The tests establish concrete scheduling and adapter behavior. They do **not** establish 95% product equivalence, identical model judgment, or reliable seven-day uninterrupted execution in a desktop turn. Native scheduling would require a supported host extension or a custom client. These limitations are architecture boundaries, not features a longer skill prompt can supply.
