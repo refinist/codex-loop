@@ -10,6 +10,10 @@ npx skills add refinist/codex-loop --skill codex-loop -g
 
 需要 Python 3.10+，支持 macOS 和 Linux。安装后，在 Codex 中通过 `$codex-loop` 调用。
 
+## yetone 的 loop 工作流
+
+[查看 yetone 的原推文](https://x.com/yetone/status/2109855710444237018)
+
 ## 使用方式
 
 时间间隔和任务内容都可以省略，不同输入对应不同的运行方式：
@@ -71,10 +75,6 @@ $codex-loop
 默认在当前聊天的活跃轮次中执行和等待。停止生成或退出后不会自动唤醒；动态循环需要重新开启，固定任务可在明确请求恢复后继续。`$codex-loop` 是 skill 入口，不会注册 Codex 原生 `/loop` 命令。
 
 如果希望在独立终端中运行，使用附带的 [CLI driver](references/cli.md)。它在前台持有独立的 Codex worker，并在等待结束后恢复该会话；不继承当前聊天的历史。与 Claude Code 的具体差异见[兼容说明](references/compatibility.md)。
-
-## yetone 的 loop 工作流
-
-[查看 yetone 的原推文](https://x.com/yetone/status/2109855710444237018)
 
 ## 原图
 
